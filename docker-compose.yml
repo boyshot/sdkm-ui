@@ -1,0 +1,39 @@
+services:
+  sdkman-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sdkman-ui
+    restart: unless-stopped
+
+    ports:
+      # HOST_PORT:CONTAINER_PORT — altere HOST_PORT para mudar a porta no host
+      - "${PORT:-8080}:8080"
+
+    volumes:
+      # Monta o diretório ~/.sdkman do host dentro do container.
+      # O SDKMAN instalado no host é compartilhado com a aplicação.
+      - "${SDKMAN_DIR:-${HOME}/.sdkman}:/home/appuser/.sdkman"
+
+      # O Makefile define CONFIG_FILE para selecionar outro arquivo YAML.
+      - "${CONFIG_FILE:-./config.yaml}:/etc/sdkman-ui/config.yaml:ro"
+
+    environment:
+      # Variáveis de ambiente lidas pelo config (opcional — o config.yaml
+      # dentro do container já define os valores padrão).
+      TZ: America/Sao_Paulo
+
+    # Configuração do servidor via flags (sobrescreve config.yaml)
+    # O host deve ser 0.0.0.0 para aceitar conexões do host Docker.
+    command: ["-addr", "0.0.0.0:8080", "-config", "/etc/sdkman-ui/config.yaml"]
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+    labels:
+      com.sdkman-ui.description: "SDKMAN UI — interface web local para gerenciar o SDKMAN"
+      com.sdkman-ui.version: "1.0.0"

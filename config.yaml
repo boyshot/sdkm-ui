@@ -1,0 +1,21 @@
+# SDKMAN UI — arquivo de configuração
+# Todos os campos são opcionais; os valores abaixo são os padrões.
+
+server:
+  # Endereço IP de escuta. Use 0.0.0.0 para aceitar conexões externas,
+  # mas prefira 127.0.0.1 para uso estritamente local (recomendado).
+  host: 127.0.0.1
+  # Porta TCP do servidor HTTP.
+  port: 9000
+
+sdkman:
+  # Diretório base da instalação do SDKMAN.
+  # Padrão: ~/.sdkman (resolvido em tempo de execução)
+  # dir: /home/usuario/.sdkman
+
+jobs:
+  # Timeout máximo para execução de um job (install, uninstall, default).
+  # Aceita sufixos: s (segundos), m (minutos), h (horas).
+  timeout: 10m
+  # Número máximo de jobs aguardando na fila antes de rejeitar novos.
+  queue_size: 64

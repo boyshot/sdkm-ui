@@ -1,0 +1,130 @@
+{{define "versions-list.html"}}
+<article>
+  <header>
+    <strong>Versões disponíveis — {{.Candidate}}</strong>
+    <button class="outline secondary" style="float:right; margin:0; padding:0.2em 0.6em; font-size:0.8rem;"
+      onclick="document.getElementById('versions-section').innerHTML=''">✕</button>
+  </header>
+
+  {{if .Versions}}
+  <div style="overflow-x:auto;">
+    <table role="grid">
+      <thead>
+        <tr>
+          <th>Versão</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Versions}}
+        <tr>
+          <td><code>{{.Version}}</code></td>
+          <td>
+            {{if .IsCurrent}}
+              <span class="badge badge-current">current</span>
+            {{else if .Installed}}
+              <span class="badge badge-installed">instalada</span>
+            {{else}}
+              <span style="color:var(--pico-muted-color);">disponível</span>
+            {{end}}
+          </td>
+          <td>
+            <div class="actions">
+              {{if .Installed}}
+                {{if .IsCurrent}}
+                  <!-- Versão atual: sem ações destrutivas -->
+                  <em style="font-size:0.8rem; color:var(--pico-muted-color);">em uso</em>
+                {{else}}
+                  <!-- Instalada mas não é a current: padrão + remover -->
+                  <button class="outline contrast"
+                    hx-put="/candidates/{{$.Candidate}}/default"
+                    hx-vals='{"version":"{{.Version}}"}'
+                    hx-headers='{"Content-Type":"application/json"}'
+                    hx-on::after-request="startJobStream(event)"
+                    title="Definir como padrão">
+                    ★ Padrão
+                  </button>
+                  <button class="outline secondary"
+                    hx-delete="/candidates/{{$.Candidate}}/versions/{{.Version}}"
+                    hx-on::after-request="startJobStream(event)"
+                    hx-confirm="Remover {{$.Candidate}} {{.Version}}?"
+                    title="Remover versão">
+                    ✕ Remover
+                  </button>
+                {{end}}
+              {{else}}
+                <!-- Não instalada: botão de instalar -->
+                <button class="outline"
+                  hx-post="/candidates/{{$.Candidate}}/install"
+                  hx-vals='{"version":"{{.Version}}"}'
+                  hx-headers='{"Content-Type":"application/json"}'
+                  hx-on::after-request="startJobStream(event)"
+                  title="Instalar {{.Version}}">
+                  ⬇ Instalar
+                </button>
+              {{end}}
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p>Nenhuma versão encontrada para <strong>{{.Candidate}}</strong>.</p>
+  {{end}}
+</article>
+
+<script>
+// Após qualquer operação de escrita, conectar ao SSE do job retornado.
+function startJobStream(evt) {
+  var resp;
+  try { resp = JSON.parse(evt.detail.xhr.responseText); } catch(e) { return; }
+  var jobId = resp && resp.job_id;
+  if (!jobId) return;
+
+  var section = document.getElementById('job-section');
+  var panel   = document.getElementById('log-panel');
+  var badge   = document.getElementById('job-status-badge');
+
+  section.style.display = 'block';
+  panel.innerHTML = '';
+  badge.className = 'badge badge-running';
+  badge.textContent = 'running';
+
+  var src = new EventSource('/jobs/' + jobId + '/stream');
+
+  src.addEventListener('log', function(e) {
+    var line = document.createElement('p');
+    line.textContent = e.data;
+    panel.appendChild(line);
+    panel.scrollTop = panel.scrollHeight;
+  });
+
+  src.addEventListener('status', function(e) {
+    badge.className = 'badge badge-' + e.data;
+    badge.textContent = e.data;
+    if (e.data === 'done' || e.data === 'error') {
+      src.close();
+      // Recarregar lista de candidates para refletir mudanças
+      htmx.ajax('GET', '/candidates', {
+        target: '#candidates-section',
+        swap: 'innerHTML',
+        headers: {'HX-Request': 'true'}
+      });
+    }
+  });
+
+  src.addEventListener('error', function(e) {
+    var line = document.createElement('p');
+    line.style.color = '#f38ba8';
+    line.textContent = '⚠ ' + e.data;
+    panel.appendChild(line);
+    panel.scrollTop = panel.scrollHeight;
+  });
+
+  src.onerror = function() { src.close(); };
+}
+</script>
+{{end}}

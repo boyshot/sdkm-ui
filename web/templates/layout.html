@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SDKMAN UI</title>
+  <link rel="stylesheet" href="/static/pico.min.css" />
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/sse.js"></script>
+  <style>
+    .badge {
+      display: inline-block;
+      padding: 0.15em 0.55em;
+      border-radius: var(--pico-border-radius);
+      font-size: 0.75rem;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    .badge-current  { background: var(--pico-color-green-550); color: #fff; }
+    .badge-installed{ background: var(--pico-color-blue-550);  color: #fff; }
+    .badge-pending  { background: var(--pico-color-amber-500); color: #fff; }
+    .badge-running  { background: var(--pico-color-blue-400);  color: #fff; }
+    .badge-done     { background: var(--pico-color-green-550); color: #fff; }
+    .badge-error    { background: var(--pico-color-red-550);   color: #fff; }
+
+    #log-panel {
+      background: #1e1e2e;
+      color: #cdd6f4;
+      font-family: monospace;
+      font-size: 0.82rem;
+      padding: 1rem;
+      border-radius: var(--pico-border-radius);
+      min-height: 6rem;
+      max-height: 22rem;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    #log-panel p { margin: 0; line-height: 1.5; }
+
+    details summary { cursor: pointer; }
+    .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .actions button { margin: 0; padding: 0.3em 0.75em; font-size: 0.82rem; }
+    table { font-size: 0.88rem; }
+  </style>
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <ul><li><strong>SDKMAN UI</strong></li></ul>
+      <ul>
+        <li>
+          <button class="outline secondary"
+            hx-get="/candidates"
+            hx-target="#candidates-section"
+            hx-swap="innerHTML"
+            hx-headers='{"HX-Request":"true"}'>
+            ↺ Atualizar
+          </button>
+        </li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container">
+    {{block "content" .}}{{end}}
+  </main>
+
+  <footer class="container">
+    <small>Rodando em <code>127.0.0.1</code> — SDKMAN UI</small>
+  </footer>
+
+  <script>
+    // Rolar log para o fim automaticamente
+    function scrollLog() {
+      var p = document.getElementById('log-panel');
+      if (p) p.scrollTop = p.scrollHeight;
+    }
+    document.addEventListener('htmx:sseMessage', scrollLog);
+  </script>
+</body>
+</html>

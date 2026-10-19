@@ -1,0 +1,19 @@
+# Binários gerados
+sdkman-ui
+
+# Artefatos de desenvolvimento
+.git
+.gitignore
+*.md
+doc/
+.kiro/
+
+# Dependências Go locais (resolvidas dentro do container)
+vendor/
+
+# Arquivos de IDE e sistema
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/

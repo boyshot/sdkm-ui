@@ -1,0 +1,44 @@
+{{define "candidates-list.html"}}
+{{if .Candidates}}
+<table role="grid">
+  <thead>
+    <tr>
+      <th>Candidate</th>
+      <th>Versão atual</th>
+      <th>Ações</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Candidates}}
+    <tr>
+      <td><strong>{{.Name}}</strong></td>
+      <td>
+        {{if .CurrentVersion}}
+          <span class="badge badge-current">{{.CurrentVersion}}</span>
+        {{else}}
+          <em>nenhuma</em>
+        {{end}}
+      </td>
+      <td>
+        <button class="outline"
+          hx-get="/candidates/{{.Name}}/versions"
+          hx-target="#versions-section"
+          hx-swap="innerHTML"
+          hx-headers='{"HX-Request":"true"}'
+          hx-indicator="#spinner">
+          Ver versões
+        </button>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>Nenhum candidate encontrado em <code>~/.sdkman/candidates/</code>.</p>
+{{end}}
+
+<!-- Área onde a lista de versões é injetada via HTMX -->
+<div id="versions-section" style="margin-top:1.5rem;"></div>
+
+<span id="spinner" class="htmx-indicator" aria-busy="true" aria-label="Carregando…"></span>
+{{end}}

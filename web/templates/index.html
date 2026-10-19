@@ -1,0 +1,20 @@
+{{template "layout.html" .}}
+
+{{define "content"}}
+<h2>Candidates instalados</h2>
+
+<div id="candidates-section">
+  {{template "candidates-list.html" .}}
+</div>
+
+<!-- Painel de progresso (oculto até um job ser iniciado) -->
+<div id="job-section" style="display:none; margin-top:2rem;">
+  <article>
+    <header>
+      <strong>Progresso</strong>
+      <span id="job-status-badge"></span>
+    </header>
+    <div id="log-panel"></div>
+  </article>
+</div>
+{{end}}
