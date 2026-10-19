@@ -2,7 +2,7 @@
 
 ## 1. Visão Geral
 
-SDKMAN UI é uma aplicação web fullstack escrita em Go que fornece uma interface gráfica local para gerenciar instalações do [SDKMAN](https://sdkman.io/). Empacotada como **binário único autocontido**, não requer servidor web externo, banco de dados ou runtime além do próprio Go compilado.
+SDKMAN UI é uma aplicação web fullstack escrita em Go que fornece uma interface gráfica para gerenciar instalações do [SDKMAN](https://sdkman.io/). Pode ser executada como **binário único autocontido** ou em container Docker; não requer servidor web externo nem banco de dados.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -12,7 +12,7 @@ SDKMAN UI é uma aplicação web fullstack escrita em Go que fornece uma interfa
                      │ HTTP / SSE
 ┌────────────────────▼────────────────────────────┐
 │              Go HTTP Server                      │
-│  net/http ServeMux  ·  127.0.0.1:8080           │
+│  net/http ServeMux  ·  endereço configurável     │
 │                                                  │
 │  ┌─────────────┐  ┌──────────┐  ┌────────────┐ │
 │  │  internal/  │  │internal/ │  │ internal/  │ │
@@ -41,7 +41,7 @@ SDKMAN UI é uma aplicação web fullstack escrita em Go que fornece uma interfa
 
 | Camada | Tecnologia | Versão | Justificativa |
 |---|---|---|---|
-| Linguagem | Go | 1.22+ | stdlib robusta, binário único, concorrência nativa |
+| Linguagem | Go | 1.27.2 (`go.mod`) | stdlib robusta, binário único, concorrência nativa |
 | HTTP Router | `net/http` ServeMux | stdlib | pattern routing nativo no Go 1.22+, sem dependências |
 | Templates | `html/template` | stdlib | escape automático de HTML, sem codegen |
 | Frontend | HTMX | 1.9.12 | interatividade sem SPA, requisições declarativas no HTML |
@@ -50,6 +50,7 @@ SDKMAN UI é uma aplicação web fullstack escrita em Go que fornece uma interfa
 | SSE extension | htmx-ext-sse | 2.2.2 | integração HTMX + EventSource |
 | Configuração | `gopkg.in/yaml.v3` | 3.0.1 | YAML legível para config file |
 | Assets | `go:embed` | stdlib | CSS/JS/templates embutidos no binário |
+| Container | Docker multi-stage | Go 1.27 Alpine + Alpine 3.20 | Execução opcional com SDKMAN montado como volume |
 
 ---
 
@@ -96,6 +97,8 @@ sdk-ui/
 │       └── versions-list.html   # Partial: tabela de versões + script SSE
 │
 ├── config.yaml                # Configuração padrão (opcional)
+├── Dockerfile                 # Build multi-stage e imagem runtime
+├── docker-compose.yml         # Execução via Docker Compose
 ├── Makefile
 └── go.mod
 ```
@@ -139,6 +142,8 @@ Browser ──GET /candidates/{name}/versions──► handleListVersions
 ```
 Browser ──POST /candidates/{name}/install──► handleInstall
                                                   │
+                                  JSON {"version":"21.0.3-tem"}
+                                                  │
                                           Queue.Enqueue()
                                                   │
                                          ← 202 Accepted {"job_id": "42"}
@@ -153,7 +158,7 @@ Browser ──POST /candidates/{name}/install──► handleInstall
                                                   │
                               bash -c "source sdkman-init.sh && sdk install java $0"
                                                   │
-                              StdoutPipe → bufio.Scanner → stripANSI
+                              stdout/stderr → bufio.Scanner → stripANSI
                                                   │
                               job.logCh ← linha   │
                                                   │
@@ -193,16 +198,17 @@ type Client interface {
 
 - **Serialização**: um único goroutine worker consome o channel; apenas um job executa por vez, evitando conflitos no SDKMAN (que não é thread-safe).
 - **ID**: contador atômico (`sync/atomic`), simples e ordenado.
-- **Lifecyle**: `pending → running → done | error`.
-- **Cancelamento**: cada job recebe um `context.WithTimeout`; ao cancelar, o `exec.CommandContext` encerra o processo bash filho.
-- **Distribuição de logs**: channel buffered `logCh` (cap 128); SSE handler drena o channel em goroutine separada.
+- **Lifecycle**: `pending → running → done | error`.
+- **Cancelamento**: ao iniciar a execução, o job recebe um `context.WithTimeout`; o `exec.CommandContext` encerra o processo bash ao cancelar ou expirar o timeout.
+- **Distribuição de logs**: channel buffered `logCh` (capacidade 128) por job; o handler SSE consome o channel enquanto a fila acumula as linhas em memória.
+- **Persistência e consumo**: jobs e logs existem apenas em memória; o channel de logs é consumível, não um broadcast para múltiplos clientes SSE.
 
 ### 5.3 `internal/api` — Camada HTTP
 
 - **Router**: `net/http.ServeMux` com method+path patterns (`GET /candidates/{name}/versions`), disponível nativamente desde Go 1.22.
 - **Middleware**: `chain(handler, middlewares...)` aplica `validateCandidate` e `validateVersion` nas rotas que recebem parâmetros de path.
-- **HTMX**: handlers detectam `HX-Request: true` e retornam HTML parcial em vez de JSON, permitindo swap direto no DOM.
-- **SSE**: `Content-Type: text/event-stream`, flush por linha, encerra ao fechar `job.logCh` ou ao detectar cliente desconectado via `r.Context().Done()`.
+- **HTMX**: os handlers de listagem de candidates e versões detectam `HX-Request: true` e retornam HTML parcial; sem esse header, respondem JSON. Os endpoints de mutação retornam JSON.
+- **SSE**: `Content-Type: text/event-stream`, envia os logs já acumulados e depois consome novos; encerra ao fechar `job.logCh`/`job.Done()` ou ao detectar cliente desconectado via `r.Context().Done()`.
 
 ### 5.4 `web` — Assets Embutidos
 
@@ -219,9 +225,9 @@ type Client interface {
 | `GET` | `/` | Página principal | HTML |
 | `GET` | `/candidates` | Lista candidates instalados | HTML partial / JSON |
 | `GET` | `/candidates/{name}/versions` | Versões disponíveis | HTML partial / JSON |
-| `POST` | `/candidates/{name}/install` | Inicia instalação | `202 {"job_id":"…"}` |
+| `POST` | `/candidates/{name}/install` | Inicia instalação; recebe `{"version":"…"}` em JSON | `202 {"job_id":"…"}` |
 | `DELETE` | `/candidates/{name}/versions/{version}` | Remove versão | `202 {"job_id":"…"}` |
-| `PUT` | `/candidates/{name}/default` | Define versão padrão | `202 {"job_id":"…"}` |
+| `PUT` | `/candidates/{name}/default` | Define versão padrão; recebe `{"version":"…"}` em JSON | `202 {"job_id":"…"}` |
 | `GET` | `/jobs/{id}/stream` | SSE stream de log | `text/event-stream` |
 
 **Eventos SSE:**
@@ -229,8 +235,8 @@ type Client interface {
 | Evento | Dados | Descrição |
 |---|---|---|
 | `log` | linha de texto | Linha de saída do processo |
-| `status` | `done` \| `error` | Job finalizado |
-| `error` | mensagem | Erro do job |
+| `status` | `done` \| `error` | Estado final enviado ao encerrar o stream |
+| `error` | mensagem | Detalhe de erro enviado ao encerrar o stream quando disponível |
 
 ---
 
@@ -239,25 +245,30 @@ type Client interface {
 Ordem de precedência (maior sobrescreve menor):
 
 ```
-1. Valores padrão (hardcoded em config.defaults())
-2. Arquivo config.yaml (caminho padrão ou via -config)
+1. Valores padrão definidos em internal/config/config.go
+2. Arquivo YAML (config.yaml ou caminho informado por -config)
 3. Flag de linha de comando -addr (sobrescreve server.host + server.port)
 ```
+
+Se o arquivo não existir, `config.Load` usa os padrões; campos omitidos no YAML também mantêm seus padrões. O arquivo incluído no projeto define a porta `9000`; o padrão aplicado pelo código quando o campo é omitido é `8080`. O diretório SDKMAN omitido é resolvido como `$HOME/.sdkman`.
 
 Campos disponíveis em `config.yaml`:
 
 ```yaml
 server:
   host: 127.0.0.1   # IP de escuta
-  port: 8080         # porta TCP
+  port: 9000         # porta TCP deste config.yaml
 
 sdkman:
-  dir: ~/.sdkman     # diretório base do SDKMAN
+  # dir: /caminho/absoluto/para/.sdkman
+  # omitido: $HOME/.sdkman
 
 jobs:
   timeout: 10m       # timeout máximo por job
   queue_size: 64     # capacidade da fila
 ```
+
+O `Makefile` usa `CONFIG=config.yaml` por padrão em `make run` e permite selecionar outro YAML com `CONFIG=...`; `ADDR=...` é encaminhado como `-addr`. `docker-run` e `docker-up` também montam o arquivo indicado por `CONFIG`. No Docker, o processo escuta em `0.0.0.0:8080`; `PORT` controla a porta publicada no host e não altera a porta interna.
 
 ---
 
@@ -267,9 +278,11 @@ jobs:
 |---|---|
 | Injeção de shell | Argumentos posicionais no bash; nunca interpolação de strings |
 | Traversal / path injection | Validação regex `^[a-z0-9._-]+$` em candidate e version |
-| Acesso externo não autorizado | Bind exclusivo em `127.0.0.1` por padrão |
+| Acesso externo não autorizado | Bind local (`127.0.0.1`) nos padrões do código/configuração; Docker força `0.0.0.0` dentro do container e publica a porta do host |
 | Execução de comandos arbitrários | Interface `Client` abstrai exec; apenas `install`, `uninstall`, `default` |
 | Prompts interativos | `SDKMAN_AUTO_ANSWER=true` elimina confirmações do CLI |
+
+Não há autenticação embutida. Ao usar Docker, a exposição efetiva depende do mapeamento de portas e da rede/firewall do host.
 
 ---
 
@@ -292,7 +305,7 @@ jobs:
 | Tempo real | SSE | WebSockets | SSE é suficiente (unidirecional); mais simples de implementar |
 | Serialização de jobs | Worker goroutine único | Pool de workers | SDKMAN não é thread-safe; serialização é obrigação, não limitação |
 | IDs de jobs | Contador atômico | UUID | Simplicidade; suficiente para uso local single-user |
-| Distribuição | Binário único | Docker / systemd | Facilidade de uso; sem runtime externo |
+| Distribuição | Binário único local e imagem Docker | Servidor web externo / banco de dados | Execução local autocontida ou container, sem serviço de aplicação adicional |
 
 ---
 
