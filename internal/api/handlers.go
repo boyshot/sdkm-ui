@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"mime"
 	"net/http"
 
 	"github.com/paulo-rocha/sdkman-ui/internal/jobs"
@@ -46,6 +47,31 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 // writeError responde com JSON {"error": "..."} e o status informado.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func requestVersion(r *http.Request) (string, error) {
+	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return "", err
+	}
+
+	switch contentType {
+	case "application/json":
+		var body struct {
+			Version string `json:"version"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			return "", err
+		}
+		return body.Version, nil
+	case "application/x-www-form-urlencoded":
+		if err := r.ParseForm(); err != nil {
+			return "", err
+		}
+		return r.PostForm.Get("version"), nil
+	default:
+		return "", fmt.Errorf("tipo de conteúdo não suportado: %q", contentType)
+	}
 }
 
 // ----- GET / -----
@@ -104,15 +130,12 @@ func (h *handler) handleInstall(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	version := r.PathValue("version")
 	if version == "" {
-		// Tentar corpo JSON {"version": "..."}
-		var body struct {
-			Version string `json:"version"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Version == "" {
+		var err error
+		version, err = requestVersion(r)
+		if err != nil || version == "" {
 			writeError(w, http.StatusBadRequest, "versão não informada")
 			return
 		}
-		version = body.Version
 	}
 
 	jobID, err := h.queue.Enqueue(name, version, "install")
@@ -142,15 +165,13 @@ func (h *handler) handleUninstall(w http.ResponseWriter, r *http.Request) {
 func (h *handler) handleSetDefault(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
-	var body struct {
-		Version string `json:"version"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Version == "" {
-		writeError(w, http.StatusBadRequest, "versão não informada no corpo JSON")
+	version, err := requestVersion(r)
+	if err != nil || version == "" {
+		writeError(w, http.StatusBadRequest, "versão não informada")
 		return
 	}
 
-	jobID, err := h.queue.Enqueue(name, body.Version, "default")
+	jobID, err := h.queue.Enqueue(name, version, "default")
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 		return

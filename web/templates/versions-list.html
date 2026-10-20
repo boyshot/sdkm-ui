@@ -40,7 +40,6 @@
                   <button class="outline contrast"
                     hx-put="/candidates/{{$.Candidate}}/default"
                     hx-vals='{"version":"{{.Version}}"}'
-                    hx-headers='{"Content-Type":"application/json"}'
                     hx-on::after-request="startJobStream(event)"
                     title="Definir como padrão">
                     ★ Padrão
@@ -58,7 +57,6 @@
                 <button class="outline"
                   hx-post="/candidates/{{$.Candidate}}/install"
                   hx-vals='{"version":"{{.Version}}"}'
-                  hx-headers='{"Content-Type":"application/json"}'
                   hx-on::after-request="startJobStream(event)"
                   title="Instalar {{.Version}}">
                   ⬇ Instalar
