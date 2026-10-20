@@ -10,6 +10,7 @@ Pode ser executado como **binário único autocontido** ou via **Docker/Docker C
 
 - Listar candidates instalados com a versão ativa de cada um
 - Listar versões disponíveis na API do SDKMAN mescladas com as instaladas localmente
+- Filtrar versões de Java pelo identificador do provedor (por exemplo, `amzn` para Amazon)
 - Instalar uma versão com log de progresso em tempo real (SSE)
 - Remover uma versão instalada
 - Definir a versão padrão (`sdk default`)

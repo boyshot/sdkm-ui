@@ -7,8 +7,17 @@
   </header>
 
   {{if .Versions}}
+  {{if eq .Candidate "java"}}
+  <label for="java-version-search">Filtrar versões Java por provedor</label>
+  <input
+    id="java-version-search"
+    type="search"
+    placeholder="Ex.: amzn, temurin ou zulu"
+    oninput="filterJavaVersions(this.value)"
+    autocomplete="off">
+  {{end}}
   <div style="overflow-x:auto;">
-    <table role="grid">
+    <table role="grid" {{if eq .Candidate "java"}}id="java-versions-table"{{end}}>
       <thead>
         <tr>
           <th>Versão</th>
@@ -18,7 +27,7 @@
       </thead>
       <tbody>
         {{range .Versions}}
-        <tr>
+        <tr {{if eq $.Candidate "java"}}data-java-version-row{{end}}>
           <td><code>{{.Version}}</code></td>
           <td>
             {{if .IsCurrent}}
@@ -69,12 +78,30 @@
       </tbody>
     </table>
   </div>
+  {{if eq .Candidate "java"}}
+  <p id="java-version-no-results" hidden>Nenhuma versão corresponde à busca.</p>
+  {{end}}
   {{else}}
   <p>Nenhuma versão encontrada para <strong>{{.Candidate}}</strong>.</p>
   {{end}}
 </article>
 
 <script>
+function filterJavaVersions(query) {
+  var normalizedQuery = query.trim().toLowerCase();
+  var rows = document.querySelectorAll('[data-java-version-row]');
+  var visibleCount = 0;
+
+  rows.forEach(function(row) {
+    var matches = row.cells[0].textContent.toLowerCase().includes(normalizedQuery);
+    row.hidden = !matches;
+    if (matches) visibleCount++;
+  });
+
+  var noResults = document.getElementById('java-version-no-results');
+  if (noResults) noResults.hidden = visibleCount > 0;
+}
+
 // Após qualquer operação de escrita, conectar ao SSE do job retornado.
 function startJobStream(evt) {
   var resp;

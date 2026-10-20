@@ -7,7 +7,6 @@
   {{template "candidates-list.html" .}}
 </div>
 
-<!-- Painel de progresso (oculto até um job ser iniciado) -->
 <div id="job-section" style="display:none; margin-top:2rem;">
   <article>
     <header>
@@ -17,4 +16,7 @@
     <div id="log-panel"></div>
   </article>
 </div>
+
+<div id="versions-section" style="margin-top:1.5rem;"></div>
+<span id="spinner" class="htmx-indicator" aria-busy="true" aria-label="Carregando…"></span>
 {{end}}
